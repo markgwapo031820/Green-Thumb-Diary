@@ -1,22 +1,27 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Plant Care Tracker API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: plants
+    description: Plant management
+  - name: logs
+    description: Growth log management
+  - name: stats
+    description: Statistics and summaries
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +29,372 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /plants:
+    get:
+      operationId: listPlants
+      tags: [plants]
+      summary: List all plants
+      responses:
+        "200":
+          description: List of plants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Plant"
+    post:
+      operationId: createPlant
+      tags: [plants]
+      summary: Add a new plant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlantInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plant"
+
+  /plants/{id}:
+    get:
+      operationId: getPlant
+      tags: [plants]
+      summary: Get a single plant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Plant found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plant"
+        "404":
+          description: Not found
+    patch:
+      operationId: updatePlant
+      tags: [plants]
+      summary: Update a plant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlantUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plant"
+        "404":
+          description: Not found
+    delete:
+      operationId: deletePlant
+      tags: [plants]
+      summary: Delete a plant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /plants/{id}/water:
+    post:
+      operationId: waterPlant
+      tags: [plants]
+      summary: Mark plant as watered now
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Watered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plant"
+        "404":
+          description: Not found
+
+  /plants/{id}/logs:
+    get:
+      operationId: listPlantLogs
+      tags: [logs]
+      summary: List growth logs for a plant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/GrowthLog"
+    post:
+      operationId: createPlantLog
+      tags: [logs]
+      summary: Add a growth log entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrowthLogInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GrowthLog"
+
+  /plants/{plantId}/logs/{logId}:
+    delete:
+      operationId: deletePlantLog
+      tags: [logs]
+      summary: Delete a growth log entry
+      parameters:
+        - name: plantId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: logId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+
+  /stats:
+    get:
+      operationId: getStats
+      tags: [stats]
+      summary: Get garden statistics
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GardenStats"
+
+  /activity:
+    get:
+      operationId: getActivity
+      tags: [stats]
+      summary: Recent activity feed (waterings + logs)
+      responses:
+        "200":
+          description: Activity feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    Plant:
+      type: object
+      required: [id, name, species, dateAcquired, wateringFrequencyDays, logs]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        species:
+          type: string
+        photo:
+          type: ["string", "null"]
+        dateAcquired:
+          type: string
+          format: date-time
+        wateringFrequencyDays:
+          type: integer
+        lastWatered:
+          type: ["string", "null"]
+          format: date-time
+        logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/GrowthLog"
+
+    PlantInput:
+      type: object
+      required: [name, species, dateAcquired, wateringFrequencyDays]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        species:
+          type: string
+        photo:
+          type: string
+        dateAcquired:
+          type: string
+          format: date-time
+        wateringFrequencyDays:
+          type: integer
+          minimum: 1
+        lastWatered:
+          type: string
+          format: date-time
+
+    PlantUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        species:
+          type: string
+        photo:
+          type: ["string", "null"]
+        dateAcquired:
+          type: string
+          format: date-time
+        wateringFrequencyDays:
+          type: integer
+          minimum: 1
+
+    GrowthLog:
+      type: object
+      required: [id, plantId, date, notes]
+      properties:
+        id:
+          type: integer
+        plantId:
+          type: integer
+        date:
+          type: string
+          format: date-time
+        notes:
+          type: string
+        photo:
+          type: ["string", "null"]
+
+    GrowthLogInput:
+      type: object
+      required: [notes]
+      properties:
+        notes:
+          type: string
+          minLength: 1
+        photo:
+          type: string
+        date:
+          type: string
+          format: date-time
+
+    GardenStats:
+      type: object
+      required: [totalPlants, overdueCount, dueSoonCount, healthyCount, totalLogs, wateredThisWeek, careStreak, plantHealth]
+      properties:
+        totalPlants:
+          type: integer
+        overdueCount:
+          type: integer
+        dueSoonCount:
+          type: integer
+        healthyCount:
+          type: integer
+        totalLogs:
+          type: integer
+        wateredThisWeek:
+          type: integer
+        careStreak:
+          type: integer
+        plantHealth:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlantHealth"
+
+    PlantHealth:
+      type: object
+      required: [plantId, name, status, daysUntilWatering, wateringFrequencyDays]
+      properties:
+        plantId:
+          type: integer
+        name:
+          type: string
+        status:
+          type: string
+          enum: [good, due-soon, overdue]
+        daysUntilWatering:
+          type: ["integer", "null"]
+        wateringFrequencyDays:
+          type: integer
+
+    ActivityItem:
+      type: object
+      required: [id, type, plantId, plantName, date]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [watered, log]
+        plantId:
+          type: integer
+        plantName:
+          type: string
+        date:
+          type: string
+          format: date-time
+        notes:
+          type: ["string", "null"]
+        photo:
+          type: ["string", "null"]
