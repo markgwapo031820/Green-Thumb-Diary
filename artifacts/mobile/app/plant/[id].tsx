@@ -1,20 +1,21 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useState } from "react";
+import React, { memo, useCallback, useMemo, useState } from "react";
 import {
   Alert,
   Image,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
+  PlantLog,
   WateringStatus,
   getDaysUntilWatering,
   getNextWateringDate,
@@ -22,6 +23,63 @@ import {
   usePlants,
 } from "@/context/PlantContext";
 import { useColors } from "@/hooks/useColors";
+
+const LogEntry = memo(function LogEntry({
+  log,
+  onDelete,
+}: {
+  log: PlantLog;
+  onDelete: (id: string) => void;
+}) {
+  const colors = useColors();
+  const handleDelete = useCallback(() => onDelete(log.id), [log.id, onDelete]);
+
+  const dateStr = useMemo(
+    () =>
+      new Date(log.date).toLocaleDateString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    [log.date]
+  );
+
+  return (
+    <View style={styles.logEntry}>
+      <View style={[styles.logDot, { backgroundColor: colors.primary }]} />
+      <View
+        style={[
+          styles.logCard,
+          { backgroundColor: colors.card, borderColor: colors.border },
+        ]}
+      >
+        <View style={styles.logCardTop}>
+          <Text style={[styles.logDate, { color: colors.mutedForeground }]}>
+            {dateStr}
+          </Text>
+          <Pressable
+            onPress={handleDelete}
+            hitSlop={10}
+            style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+          >
+            <Feather name="trash-2" size={13} color={colors.mutedForeground} />
+          </Pressable>
+        </View>
+        <Text style={[styles.logNotes, { color: colors.foreground }]}>
+          {log.notes}
+        </Text>
+        {log.photo && (
+          <Image
+            source={{ uri: log.photo }}
+            style={styles.logPhoto}
+            resizeMode="cover"
+          />
+        )}
+      </View>
+    </View>
+  );
+});
 
 export default function PlantDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -32,57 +90,69 @@ export default function PlantDetailScreen() {
 
   const plant = plants.find((p) => p.id === id);
 
-  const topInset = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
+  const topInset =
+    Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
 
-  if (!plant) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={[styles.header, { paddingTop: topInset + 16 }]}>
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-            <Feather name="arrow-left" size={22} color={colors.foreground} />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.notFound}>
-          <Text style={[styles.notFoundText, { color: colors.mutedForeground }]}>
-            Plant not found
-          </Text>
-        </View>
-      </View>
-    );
-  }
+  const status: WateringStatus = useMemo(
+    () => (plant ? getWateringStatus(plant) : "good"),
+    [plant]
+  );
+  const daysUntil = useMemo(
+    () => (plant ? getDaysUntilWatering(plant) : null),
+    [plant]
+  );
+  const nextDate = useMemo(
+    () => (plant ? getNextWateringDate(plant) : null),
+    [plant]
+  );
 
-  const status = getWateringStatus(plant);
-  const daysUntil = getDaysUntilWatering(plant);
-  const nextDate = getNextWateringDate(plant);
+  const sc = useMemo(() => {
+    const map: Record<
+      WateringStatus,
+      { color: string; bg: string; label: string; icon: keyof typeof Feather.glyphMap }
+    > = {
+      good: {
+        color: colors.success,
+        bg: colors.successLight,
+        label: "Healthy",
+        icon: "check-circle",
+      },
+      "due-soon": {
+        color: colors.warning,
+        bg: colors.warningLight,
+        label: "Due Today",
+        icon: "alert-circle",
+      },
+      overdue: {
+        color: colors.overdue,
+        bg: colors.overdueLight,
+        label: "Overdue",
+        icon: "alert-triangle",
+      },
+    };
+    return map[status];
+  }, [status, colors]);
 
-  const statusConfig: Record<
-    WateringStatus,
-    { color: string; bg: string; label: string; icon: keyof typeof Feather.glyphMap }
-  > = {
-    good: { color: colors.success, bg: colors.successLight, label: "Healthy", icon: "check-circle" },
-    "due-soon": { color: colors.warning, bg: colors.warningLight, label: "Due Today", icon: "alert-circle" },
-    overdue: { color: colors.overdue, bg: colors.overdueLight, label: "Overdue", icon: "alert-triangle" },
-  };
-  const sc = statusConfig[status];
-
-  const handleWater = async () => {
+  const handleWater = useCallback(async () => {
+    if (!plant) return;
     setWatering(true);
     if (Platform.OS !== "web") {
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
     await waterPlant(plant.id);
     setWatering(false);
-  };
+  }, [plant, waterPlant]);
 
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
+    if (!plant) return;
     Alert.alert(
-      "Delete Plant",
-      `Are you sure you want to remove ${plant.name}?`,
+      "Remove Plant",
+      `Remove "${plant.name}" from your garden? This cannot be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         {
-          text: "Delete",
+          text: "Remove",
           style: "destructive",
           onPress: async () => {
             await deletePlant(plant.id);
@@ -91,73 +161,106 @@ export default function PlantDetailScreen() {
         },
       ]
     );
-  };
+  }, [plant, deletePlant]);
 
-  const handleDeleteLog = (logId: string) => {
-    Alert.alert("Delete Entry", "Remove this growth log entry?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => deleteLog(plant.id, logId),
-      },
-    ]);
-  };
+  const handleDeleteLog = useCallback(
+    (logId: string) => {
+      if (!plant) return;
+      Alert.alert("Delete Entry", "Remove this growth log entry?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => deleteLog(plant.id, logId),
+        },
+      ]);
+    },
+    [plant, deleteLog]
+  );
 
-  const formatDate = (iso: string) => {
+  const handleAddLog = useCallback(() => {
+    router.push(`/plant/${id}/log`);
+  }, [id]);
+
+  const daysSinceAcquired = useMemo(() => {
+    if (!plant) return 0;
+    return Math.floor(
+      (Date.now() - new Date(plant.dateAcquired).getTime()) /
+        (1000 * 60 * 60 * 24)
+    );
+  }, [plant]);
+
+  const formatDate = useCallback((iso: string) => {
     return new Date(iso).toLocaleDateString(undefined, {
-      weekday: "short",
       month: "short",
       day: "numeric",
       year: "numeric",
     });
-  };
+  }, []);
 
-  const acquiredDate = new Date(plant.dateAcquired);
-  const daysSinceAcquired = Math.floor(
-    (Date.now() - acquiredDate.getTime()) / (1000 * 60 * 60 * 24)
-  );
+  const wateringTitle = useMemo(() => {
+    if (!plant) return "";
+    if (status === "overdue") return "Needs watering";
+    if (status === "due-soon") return "Water today";
+    if (daysUntil !== null)
+      return `Next watering in ${daysUntil} day${daysUntil === 1 ? "" : "s"}`;
+    return "No schedule set";
+  }, [status, daysUntil, plant]);
+
+  if (!plant) {
+    return (
+      <View
+        style={[styles.container, { backgroundColor: colors.background }]}
+      >
+        <View style={[styles.navBar, { paddingTop: topInset + 8 }]}>
+          <Pressable onPress={() => router.back()} hitSlop={8} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
+            <Feather name="arrow-left" size={22} color={colors.foreground} />
+          </Pressable>
+        </View>
+        <View style={styles.centered}>
+          <Text style={[styles.notFoundText, { color: colors.mutedForeground }]}>
+            Plant not found
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: bottomInset + 120 }}
+        contentContainerStyle={{ paddingBottom: bottomInset + 110 }}
       >
-        <View style={styles.heroContainer}>
+        <View style={styles.heroWrap}>
           {plant.photo ? (
             <Image
               source={{ uri: plant.photo }}
-              style={styles.heroImage}
+              style={styles.hero}
               resizeMode="cover"
             />
           ) : (
             <View
-              style={[styles.heroPlaceholder, { backgroundColor: colors.secondary }]}
+              style={[styles.heroFallback, { backgroundColor: colors.secondary }]}
             >
-              <Feather name="feather" size={64} color={colors.primary} />
+              <Feather name="feather" size={60} color={colors.primary} />
             </View>
           )}
           <View
-            style={[
-              styles.heroOverlay,
-              { paddingTop: topInset + 12 },
-            ]}
+            style={[styles.heroNav, { paddingTop: topInset + 12 }]}
           >
-            <TouchableOpacity
+            <Pressable
               onPress={() => router.back()}
-              style={[styles.backBtn, { backgroundColor: "rgba(0,0,0,0.35)" }]}
-              activeOpacity={0.7}
+              style={[styles.navBtn, { backgroundColor: "rgba(0,0,0,0.38)" }]}
             >
-              <Feather name="arrow-left" size={20} color="#fff" />
-            </TouchableOpacity>
-            <TouchableOpacity
+              <Feather name="arrow-left" size={18} color="#fff" />
+            </Pressable>
+            <Pressable
               onPress={handleDelete}
-              style={[styles.backBtn, { backgroundColor: "rgba(0,0,0,0.35)" }]}
-              activeOpacity={0.7}
+              style={[styles.navBtn, { backgroundColor: "rgba(0,0,0,0.38)" }]}
             >
-              <Feather name="trash-2" size={18} color="#fff" />
-            </TouchableOpacity>
+              <Feather name="trash-2" size={16} color="#fff" />
+            </Pressable>
           </View>
         </View>
 
@@ -171,176 +274,127 @@ export default function PlantDetailScreen() {
                 {plant.species}
               </Text>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: sc.bg }]}>
-              <Feather name={sc.icon} size={14} color={sc.color} />
-              <Text style={[styles.statusText, { color: sc.color }]}>
+            <View style={[styles.statusTag, { backgroundColor: sc.bg }]}>
+              <Feather name={sc.icon} size={13} color={sc.color} />
+              <Text style={[styles.statusTagText, { color: sc.color }]}>
                 {sc.label}
               </Text>
             </View>
           </View>
 
-          <View style={styles.infoRow}>
-            <View
-              style={[
-                styles.infoCard,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-            >
-              <Feather name="calendar" size={16} color={colors.primary} />
-              <Text style={[styles.infoValue, { color: colors.foreground }]}>
-                {daysSinceAcquired}d
-              </Text>
-              <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>
-                owned
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.infoCard,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-            >
-              <Feather name="droplet" size={16} color={colors.primary} />
-              <Text style={[styles.infoValue, { color: colors.foreground }]}>
-                {plant.wateringFrequencyDays}d
-              </Text>
-              <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>
-                schedule
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.infoCard,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
-            >
-              <Feather name="book-open" size={16} color={colors.primary} />
-              <Text style={[styles.infoValue, { color: colors.foreground }]}>
-                {plant.logs.length}
-              </Text>
-              <Text style={[styles.infoLabel, { color: colors.mutedForeground }]}>
-                logs
-              </Text>
-            </View>
+          <View style={styles.metaRow}>
+            {[
+              {
+                icon: "calendar" as const,
+                value: `${daysSinceAcquired}d`,
+                label: "Owned",
+              },
+              {
+                icon: "droplet" as const,
+                value: `Every ${plant.wateringFrequencyDays}d`,
+                label: "Schedule",
+              },
+              {
+                icon: "book-open" as const,
+                value: String(plant.logs.length),
+                label: "Entries",
+              },
+            ].map((m) => (
+              <View
+                key={m.label}
+                style={[
+                  styles.metaCard,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Feather name={m.icon} size={14} color={colors.primary} />
+                <Text style={[styles.metaValue, { color: colors.foreground }]}>
+                  {m.value}
+                </Text>
+                <Text style={[styles.metaLabel, { color: colors.mutedForeground }]}>
+                  {m.label}
+                </Text>
+              </View>
+            ))}
           </View>
 
           <View
             style={[
-              styles.waterCard,
-              {
-                backgroundColor: sc.bg,
-                borderColor: sc.color,
-              },
+              styles.waterBanner,
+              { backgroundColor: sc.bg, borderColor: sc.color + "40" },
             ]}
           >
-            <View style={styles.waterCardContent}>
-              <Feather name="droplet" size={18} color={sc.color} />
-              <View>
-                <Text style={[styles.waterCardTitle, { color: sc.color }]}>
-                  {status === "overdue"
-                    ? "Needs watering now!"
-                    : status === "due-soon"
-                    ? "Water today"
-                    : daysUntil !== null
-                    ? `Next watering in ${daysUntil} day${daysUntil === 1 ? "" : "s"}`
-                    : "No schedule set"}
-                </Text>
-                {nextDate && (
-                  <Text style={[styles.waterCardDate, { color: sc.color, opacity: 0.7 }]}>
-                    {formatDate(nextDate.toISOString())}
-                  </Text>
-                )}
-                {plant.lastWatered && (
-                  <Text style={[styles.waterCardDate, { color: sc.color, opacity: 0.7 }]}>
-                    Last watered: {formatDate(plant.lastWatered)}
-                  </Text>
-                )}
-              </View>
+            <Feather name="droplet" size={17} color={sc.color} />
+            <View style={styles.waterBannerText}>
+              <Text style={[styles.waterBannerTitle, { color: sc.color }]}>
+                {wateringTitle}
+              </Text>
+              <Text style={[styles.waterBannerSub, { color: sc.color + "AA" }]}>
+                {plant.lastWatered
+                  ? `Last watered ${formatDate(plant.lastWatered)}`
+                  : "Never watered"}
+                {nextDate ? `  ·  Next ${formatDate(nextDate.toISOString())}` : ""}
+              </Text>
             </View>
           </View>
 
           <View style={styles.logSection}>
             <View style={styles.logHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+              <Text style={[styles.logSectionTitle, { color: colors.foreground }]}>
                 Growth Log
               </Text>
-              <TouchableOpacity
-                onPress={() => router.push(`/plant/${plant.id}/log`)}
-                style={[styles.addLogBtn, { backgroundColor: colors.secondary }]}
-                activeOpacity={0.75}
+              <Pressable
+                onPress={handleAddLog}
+                style={({ pressed }) => [
+                  styles.addEntryBtn,
+                  {
+                    backgroundColor: colors.secondary,
+                    opacity: pressed ? 0.8 : 1,
+                  },
+                ]}
               >
-                <Feather name="plus" size={16} color={colors.primary} />
-                <Text style={[styles.addLogText, { color: colors.primary }]}>
+                <Feather name="plus" size={14} color={colors.primary} />
+                <Text style={[styles.addEntryText, { color: colors.primary }]}>
                   Add Entry
                 </Text>
-              </TouchableOpacity>
+              </Pressable>
             </View>
 
             {plant.logs.length === 0 ? (
               <View
                 style={[
                   styles.emptyLog,
-                  { backgroundColor: colors.card, borderColor: colors.border },
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                  },
                 ]}
               >
-                <Feather name="edit-3" size={28} color={colors.border} />
-                <Text style={[styles.emptyLogText, { color: colors.mutedForeground }]}>
+                <Feather name="edit-3" size={24} color={colors.border} />
+                <Text
+                  style={[styles.emptyLogTitle, { color: colors.mutedForeground }]}
+                >
                   No entries yet
                 </Text>
-                <Text style={[styles.emptyLogSub, { color: colors.mutedForeground }]}>
-                  Track your plant's progress
+                <Text
+                  style={[styles.emptyLogSub, { color: colors.mutedForeground }]}
+                >
+                  Start documenting your plant's progress
                 </Text>
               </View>
             ) : (
               <View style={styles.timeline}>
-                {plant.logs.map((log, index) => (
-                  <View key={log.id} style={styles.timelineItem}>
-                    <View style={styles.timelineLine}>
-                      <View
-                        style={[styles.timelineDot, { backgroundColor: colors.primary }]}
-                      />
-                      {index < plant.logs.length - 1 && (
-                        <View
-                          style={[styles.timelineConnector, { backgroundColor: colors.border }]}
-                        />
-                      )}
-                    </View>
-                    <View
-                      style={[
-                        styles.logCard,
-                        {
-                          backgroundColor: colors.card,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    >
-                      <View style={styles.logCardHeader}>
-                        <Text style={[styles.logDate, { color: colors.mutedForeground }]}>
-                          {formatDate(log.date)}
-                        </Text>
-                        <TouchableOpacity
-                          onPress={() => handleDeleteLog(log.id)}
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Feather
-                            name="trash-2"
-                            size={14}
-                            color={colors.mutedForeground}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                      <Text style={[styles.logNotes, { color: colors.foreground }]}>
-                        {log.notes}
-                      </Text>
-                      {log.photo && (
-                        <Image
-                          source={{ uri: log.photo }}
-                          style={styles.logPhoto}
-                          resizeMode="cover"
-                        />
-                      )}
-                    </View>
-                  </View>
+                <View
+                  style={[
+                    styles.timelineLine,
+                    { backgroundColor: colors.border },
+                  ]}
+                />
+                {plant.logs.map((log) => (
+                  <LogEntry key={log.id} log={log} onDelete={handleDeleteLog} />
                 ))}
               </View>
             )}
@@ -350,26 +404,28 @@ export default function PlantDetailScreen() {
 
       <View
         style={[
-          styles.waterBtnContainer,
+          styles.footer,
           {
             backgroundColor: colors.background,
             borderTopColor: colors.border,
-            paddingBottom: bottomInset + 16,
+            paddingBottom: bottomInset + 12,
           },
         ]}
       >
-        <TouchableOpacity
+        <Pressable
           onPress={handleWater}
           disabled={watering}
-          style={[
-            styles.waterBtnLarge,
-            { backgroundColor: watering ? colors.muted : colors.primary },
+          style={({ pressed }) => [
+            styles.waterBtn,
+            {
+              backgroundColor:
+                watering ? colors.muted : pressed ? colors.primary + "DD" : colors.primary,
+            },
           ]}
-          activeOpacity={0.85}
         >
           <Feather
             name="droplet"
-            size={20}
+            size={18}
             color={watering ? colors.mutedForeground : "#fff"}
           />
           <Text
@@ -378,9 +434,9 @@ export default function PlantDetailScreen() {
               { color: watering ? colors.mutedForeground : "#fff" },
             ]}
           >
-            {watering ? "Marking watered..." : "Mark as Watered Today"}
+            {watering ? "Saving..." : "Mark as Watered Today"}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     </View>
   );
@@ -388,80 +444,66 @@ export default function PlantDetailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  navBar: {
     paddingHorizontal: 20,
     paddingBottom: 12,
   },
-  heroContainer: {
-    height: 280,
-    position: "relative",
+  centered: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  heroImage: {
-    width: "100%",
-    height: "100%",
-  },
-  heroPlaceholder: {
+  notFoundText: { fontSize: 15, fontFamily: "Inter_400Regular" },
+  heroWrap: { height: 260, position: "relative" },
+  hero: { width: "100%", height: "100%" },
+  heroFallback: {
     width: "100%",
     height: "100%",
     alignItems: "center",
     justifyContent: "center",
   },
-  heroOverlay: {
+  heroNav: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 16,
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  navBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
   },
-  body: {
-    padding: 20,
-    gap: 16,
-  },
+  body: { padding: 20, gap: 14 },
   titleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
   },
-  titleBlock: { flex: 1, gap: 2, marginRight: 12 },
-  plantName: {
-    fontSize: 26,
-    fontFamily: "Inter_700Bold",
-    letterSpacing: -0.5,
-  },
+  titleBlock: { flex: 1, gap: 3, marginRight: 10 },
+  plantName: { fontSize: 24, fontFamily: "Inter_700Bold", letterSpacing: -0.4 },
   plantSpecies: {
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: "Inter_400Regular",
     fontStyle: "italic",
   },
-  statusBadge: {
+  statusTag: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 10,
+    borderRadius: 8,
+    flexShrink: 0,
   },
-  statusText: {
-    fontSize: 12,
-    fontFamily: "Inter_600SemiBold",
-  },
-  infoRow: {
-    flexDirection: "row",
-    gap: 10,
-  },
-  infoCard: {
+  statusTagText: { fontSize: 12, fontFamily: "Inter_600SemiBold" },
+  metaRow: { flexDirection: "row", gap: 8 },
+  metaCard: {
     flex: 1,
     borderRadius: 12,
     borderWidth: 1,
@@ -469,146 +511,98 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
   },
-  infoValue: {
-    fontSize: 20,
-    fontFamily: "Inter_700Bold",
-  },
-  infoLabel: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
-  },
-  waterCard: {
-    borderRadius: 14,
-    borderWidth: 1.5,
-    padding: 16,
-  },
-  waterCardContent: {
+  metaValue: { fontSize: 15, fontFamily: "Inter_700Bold" },
+  metaLabel: { fontSize: 11, fontFamily: "Inter_400Regular" },
+  waterBanner: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 12,
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
   },
-  waterCardTitle: {
-    fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
-  },
-  waterCardDate: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    marginTop: 2,
-  },
+  waterBannerText: { flex: 1 },
+  waterBannerTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  waterBannerSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
   logSection: { gap: 14 },
   logHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontFamily: "Inter_600SemiBold",
-  },
-  addLogBtn: {
+  logSectionTitle: { fontSize: 17, fontFamily: "Inter_600SemiBold" },
+  addEntryBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 5,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
   },
-  addLogText: {
-    fontSize: 14,
-    fontFamily: "Inter_500Medium",
-  },
+  addEntryText: { fontSize: 13, fontFamily: "Inter_500Medium" },
   emptyLog: {
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    padding: 32,
+    padding: 28,
     alignItems: "center",
     gap: 6,
   },
-  emptyLogText: {
-    fontSize: 15,
-    fontFamily: "Inter_500Medium",
-    marginTop: 6,
-  },
-  emptyLogSub: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-  },
-  timeline: { gap: 0 },
-  timelineItem: {
-    flexDirection: "row",
-    gap: 12,
-    minHeight: 80,
-  },
+  emptyLogTitle: { fontSize: 14, fontFamily: "Inter_500Medium", marginTop: 4 },
+  emptyLogSub: { fontSize: 12, fontFamily: "Inter_400Regular" },
+  timeline: { position: "relative", paddingLeft: 24 },
   timelineLine: {
-    width: 20,
-    alignItems: "center",
-    paddingTop: 16,
+    position: "absolute",
+    left: 6,
+    top: 8,
+    bottom: 8,
+    width: 2,
+    borderRadius: 1,
   },
-  timelineDot: {
+  logEntry: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 12,
+    gap: 12,
+  },
+  logDot: {
     width: 12,
     height: 12,
     borderRadius: 6,
-  },
-  timelineConnector: {
-    flex: 1,
-    width: 2,
-    marginTop: 4,
+    marginTop: 14,
+    marginLeft: -18,
+    flexShrink: 0,
   },
   logCard: {
     flex: 1,
     borderRadius: 12,
     borderWidth: 1,
-    padding: 14,
-    marginBottom: 12,
-    gap: 8,
+    padding: 12,
+    gap: 6,
   },
-  logCardHeader: {
+  logCardTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
-  logDate: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-  },
-  logNotes: {
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
-    lineHeight: 20,
-  },
-  logPhoto: {
-    width: "100%",
-    height: 160,
-    borderRadius: 8,
-  },
-  waterBtnContainer: {
+  logDate: { fontSize: 11, fontFamily: "Inter_500Medium" },
+  logNotes: { fontSize: 14, fontFamily: "Inter_400Regular", lineHeight: 20 },
+  logPhoto: { width: "100%", height: 150, borderRadius: 8 },
+  footer: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    padding: 16,
+    paddingHorizontal: 20,
+    paddingTop: 12,
     borderTopWidth: 1,
   },
-  waterBtnLarge: {
+  waterBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
-    paddingVertical: 16,
-    borderRadius: 14,
+    gap: 8,
+    paddingVertical: 15,
+    borderRadius: 12,
   },
-  waterBtnText: {
-    fontSize: 16,
-    fontFamily: "Inter_600SemiBold",
-  },
-  notFound: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  notFoundText: {
-    fontSize: 16,
-    fontFamily: "Inter_400Regular",
-  },
+  waterBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
 });

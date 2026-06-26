@@ -1,21 +1,19 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React from "react";
+import React, { memo, useCallback, useMemo } from "react";
 import {
   Image,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 
 import {
   Plant,
-  WateringStatus,
   getDaysUntilWatering,
-  getNextWateringDate,
   getWateringStatus,
   usePlants,
 } from "@/context/PlantContext";
@@ -25,88 +23,62 @@ interface PlantCardProps {
   plant: Plant;
 }
 
-function StatusChip({ status }: { status: WateringStatus }) {
-  const colors = useColors();
-
-  const config = {
-    good: {
-      bg: colors.successLight,
-      text: colors.success,
-      label: "Good",
-      icon: "check-circle" as const,
-    },
-    "due-soon": {
-      bg: colors.warningLight,
-      text: colors.warning,
-      label: "Due today",
-      icon: "alert-circle" as const,
-    },
-    overdue: {
-      bg: colors.overdueLight,
-      text: colors.overdue,
-      label: "Overdue",
-      icon: "alert-triangle" as const,
-    },
-  }[status];
-
-  return (
-    <View style={[styles.chip, { backgroundColor: config.bg }]}>
-      <Feather name={config.icon} size={11} color={config.text} />
-      <Text style={[styles.chipText, { color: config.text }]}>
-        {config.label}
-      </Text>
-    </View>
-  );
-}
-
-export default function PlantCard({ plant }: PlantCardProps) {
+function PlantCardComponent({ plant }: PlantCardProps) {
   const colors = useColors();
   const { waterPlant } = usePlants();
-  const status = getWateringStatus(plant);
-  const daysUntil = getDaysUntilWatering(plant);
-  const nextDate = getNextWateringDate(plant);
 
-  const handleWater = async () => {
+  const status = useMemo(() => getWateringStatus(plant), [plant]);
+  const daysUntil = useMemo(() => getDaysUntilWatering(plant), [plant]);
+
+  const statusMeta = useMemo(() => {
+    switch (status) {
+      case "overdue":
+        return { color: colors.overdue, bg: colors.overdueLight, label: "Overdue" };
+      case "due-soon":
+        return { color: colors.warning, bg: colors.warningLight, label: "Due today" };
+      default:
+        return { color: colors.success, bg: colors.successLight, label: "Healthy" };
+    }
+  }, [status, colors]);
+
+  const wateringLabel = useMemo(() => {
+    if (!plant.lastWatered) return "Never watered";
+    if (daysUntil === null || daysUntil <= 0) return "Water now";
+    if (daysUntil === 1) return "Due today";
+    return `In ${daysUntil} day${daysUntil === 1 ? "" : "s"}`;
+  }, [plant.lastWatered, daysUntil]);
+
+  const progress = useMemo(() => {
+    if (!plant.lastWatered || daysUntil === null) return 0;
+    const pct = Math.max(0, Math.min(1, daysUntil / plant.wateringFrequencyDays));
+    return pct;
+  }, [plant.lastWatered, plant.wateringFrequencyDays, daysUntil]);
+
+  const handlePress = useCallback(() => {
+    router.push(`/plant/${plant.id}`);
+  }, [plant.id]);
+
+  const handleWater = useCallback(async () => {
     if (Platform.OS !== "web") {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     await waterPlant(plant.id);
-  };
-
-  const wateringLabel = (() => {
-    if (!plant.lastWatered) return "Never watered";
-    if (daysUntil === null) return "Set a schedule";
-    if (daysUntil <= 0) return "Water now!";
-    if (daysUntil === 1) return "Due today";
-    if (nextDate) {
-      return `In ${daysUntil} day${daysUntil === 1 ? "" : "s"}`;
-    }
-    return "";
-  })();
-
-  const borderColor =
-    status === "overdue"
-      ? colors.overdue
-      : status === "due-soon"
-        ? colors.warning
-        : colors.border;
+  }, [plant.id, waterPlant]);
 
   return (
-    <TouchableOpacity
-      onPress={() => router.push(`/plant/${plant.id}`)}
-      style={[
+    <Pressable
+      onPress={handlePress}
+      style={({ pressed }) => [
         styles.card,
         {
           backgroundColor: colors.card,
-          borderColor,
-          borderLeftColor: borderColor,
-          shadowColor: colors.foreground,
+          borderColor: colors.border,
+          opacity: pressed ? 0.95 : 1,
         },
       ]}
-      activeOpacity={0.85}
     >
-      <View style={styles.row}>
-        <View style={styles.photoContainer}>
+      <View style={styles.inner}>
+        <View style={styles.photoWrap}>
           {plant.photo ? (
             <Image
               source={{ uri: plant.photo }}
@@ -114,130 +86,158 @@ export default function PlantCard({ plant }: PlantCardProps) {
               resizeMode="cover"
             />
           ) : (
-            <View
-              style={[
-                styles.photoPlaceholder,
-                { backgroundColor: colors.secondary },
-              ]}
-            >
-              <Feather name="feather" size={28} color={colors.primary} />
+            <View style={[styles.photoPlaceholder, { backgroundColor: colors.secondary }]}>
+              <Feather name="feather" size={26} color={colors.primary} />
             </View>
           )}
-          <StatusChip status={status} />
         </View>
 
-        <View style={styles.info}>
-          <Text
-            style={[styles.name, { color: colors.foreground }]}
-            numberOfLines={1}
-          >
-            {plant.name}
-          </Text>
-          <Text
-            style={[styles.species, { color: colors.mutedForeground }]}
-            numberOfLines={1}
-          >
+        <View style={styles.content}>
+          <View style={styles.nameRow}>
+            <Text style={[styles.name, { color: colors.foreground }]} numberOfLines={1}>
+              {plant.name}
+            </Text>
+            <View style={[styles.statusPill, { backgroundColor: statusMeta.bg }]}>
+              <View style={[styles.statusDot, { backgroundColor: statusMeta.color }]} />
+              <Text style={[styles.statusText, { color: statusMeta.color }]}>
+                {statusMeta.label}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={[styles.species, { color: colors.mutedForeground }]} numberOfLines={1}>
             {plant.species}
           </Text>
 
-          <View style={styles.waterRow}>
-            <Feather name="droplet" size={13} color={colors.primary} />
-            <Text style={[styles.waterText, { color: colors.mutedForeground }]}>
+          <View style={styles.waterInfo}>
+            <View style={[styles.progressTrack, { backgroundColor: colors.muted }]}>
+              <View
+                style={[
+                  styles.progressFill,
+                  {
+                    width: `${Math.round(progress * 100)}%`,
+                    backgroundColor: statusMeta.color,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={[styles.waterLabel, { color: colors.mutedForeground }]}>
               {wateringLabel}
             </Text>
           </View>
         </View>
 
-        <TouchableOpacity
+        <Pressable
           onPress={handleWater}
-          style={[styles.waterBtn, { backgroundColor: colors.primary }]}
-          activeOpacity={0.7}
+          style={({ pressed }) => [
+            styles.waterBtn,
+            {
+              backgroundColor: pressed ? colors.primary + "CC" : colors.primary,
+            },
+          ]}
+          hitSlop={8}
         >
-          <Feather name="droplet" size={18} color="#fff" />
-        </TouchableOpacity>
+          <Feather name="droplet" size={16} color="#fff" />
+        </Pressable>
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 }
 
+export default memo(PlantCardComponent);
+
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
-    borderLeftWidth: 4,
-    marginBottom: 12,
-    overflow: "hidden",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
-    elevation: 2,
+    marginBottom: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  row: {
+  inner: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 14,
+    padding: 12,
     gap: 12,
   },
-  photoContainer: {
-    position: "relative",
+  photoWrap: {
+    borderRadius: 10,
+    overflow: "hidden",
   },
   photo: {
-    width: 72,
-    height: 72,
-    borderRadius: 12,
+    width: 68,
+    height: 68,
   },
   photoPlaceholder: {
-    width: 72,
-    height: 72,
-    borderRadius: 12,
+    width: 68,
+    height: 68,
     alignItems: "center",
     justifyContent: "center",
   },
-  chip: {
-    position: "absolute",
-    bottom: -6,
-    left: "50%",
-    transform: [{ translateX: -24 }],
+  content: {
+    flex: 1,
+    gap: 4,
+  },
+  nameRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  chipText: {
-    fontSize: 9,
-    fontFamily: "Inter_600SemiBold",
-    letterSpacing: 0.2,
-  },
-  info: {
-    flex: 1,
-    gap: 3,
+    justifyContent: "space-between",
+    gap: 8,
   },
   name: {
-    fontSize: 16,
+    fontSize: 15,
     fontFamily: "Inter_600SemiBold",
+    flex: 1,
   },
-  species: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
-    fontStyle: "italic",
-  },
-  waterRow: {
+  statusPill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    marginTop: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 20,
+    flexShrink: 0,
   },
-  waterText: {
+  statusDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+  },
+  statusText: {
+    fontSize: 11,
+    fontFamily: "Inter_500Medium",
+  },
+  species: {
     fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    fontStyle: "italic",
+  },
+  waterInfo: {
+    gap: 4,
+    marginTop: 2,
+  },
+  progressTrack: {
+    height: 3,
+    borderRadius: 2,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 2,
+  },
+  waterLabel: {
+    fontSize: 11,
     fontFamily: "Inter_400Regular",
   },
   waterBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
   },
 });

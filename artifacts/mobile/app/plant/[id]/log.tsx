@@ -1,13 +1,13 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -27,23 +27,33 @@ export default function AddLogScreen() {
   const [photoUrl, setPhotoUrl] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const topInset = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
+  const topInset =
+    Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const handleSave = async () => {
-    if (!notes.trim()) return;
+  const canSave = notes.trim().length > 0;
+
+  const handleSave = useCallback(async () => {
+    if (!canSave || !id) return;
     setSaving(true);
     if (Platform.OS !== "web") {
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
-    await addLog(id!, {
+    await addLog(id, {
       date: new Date().toISOString(),
       notes: notes.trim(),
       photo: photoUrl.trim() || undefined,
     });
     setSaving(false);
     router.back();
-  };
+  }, [canSave, id, notes, photoUrl, addLog]);
+
+  const todayLabel = new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -57,9 +67,13 @@ export default function AddLogScreen() {
           },
         ]}
       >
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-          <Feather name="x" size={22} color={colors.foreground} />
-        </TouchableOpacity>
+        <Pressable
+          onPress={() => router.back()}
+          hitSlop={8}
+          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+        >
+          <Feather name="x" size={21} color={colors.foreground} />
+        </Pressable>
         <View style={styles.headerCenter}>
           <Text style={[styles.headerTitle, { color: colors.foreground }]}>
             Growth Entry
@@ -70,30 +84,30 @@ export default function AddLogScreen() {
             </Text>
           )}
         </View>
-        <TouchableOpacity
+        <Pressable
           onPress={handleSave}
-          disabled={saving || !notes.trim()}
-          style={[
+          disabled={saving || !canSave}
+          style={({ pressed }) => [
             styles.saveBtn,
             {
-              backgroundColor: notes.trim() ? colors.primary : colors.muted,
+              backgroundColor: canSave ? colors.primary : colors.muted,
+              opacity: pressed ? 0.85 : 1,
             },
           ]}
-          activeOpacity={0.8}
         >
           <Text
             style={[
               styles.saveBtnText,
-              { color: notes.trim() ? "#fff" : colors.mutedForeground },
+              { color: canSave ? "#fff" : colors.mutedForeground },
             ]}
           >
             {saving ? "Saving..." : "Save"}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       <KeyboardAwareScrollView
-        style={styles.scrollView}
+        style={styles.scroll}
         contentContainerStyle={[
           styles.content,
           { paddingBottom: bottomInset + 40 },
@@ -104,18 +118,16 @@ export default function AddLogScreen() {
       >
         <View
           style={[
-            styles.dateRow,
-            { backgroundColor: colors.successLight, borderColor: colors.primary },
+            styles.dateBadge,
+            {
+              backgroundColor: colors.successLight,
+              borderColor: colors.primary + "30",
+            },
           ]}
         >
-          <Feather name="calendar" size={14} color={colors.primary} />
+          <Feather name="calendar" size={13} color={colors.primary} />
           <Text style={[styles.dateText, { color: colors.primary }]}>
-            {new Date().toLocaleDateString(undefined, {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
+            {todayLabel}
           </Text>
         </View>
 
@@ -125,26 +137,31 @@ export default function AddLogScreen() {
           </Text>
           <View
             style={[
-              styles.notesContainer,
+              styles.notesWrap,
               { backgroundColor: colors.card, borderColor: colors.border },
             ]}
           >
             <TextInput
               value={notes}
               onChangeText={setNotes}
-              placeholder="How is your plant doing? Note any new growth, changes in color, signs of pests, or anything interesting..."
+              placeholder="Describe how your plant looks — new leaves, color changes, pest signs, soil condition..."
               placeholderTextColor={colors.mutedForeground}
               style={[styles.notesInput, { color: colors.foreground }]}
               multiline
               textAlignVertical="top"
               autoFocus
             />
+            {notes.length > 0 && (
+              <Text style={[styles.charCount, { color: colors.mutedForeground }]}>
+                {notes.length} characters
+              </Text>
+            )}
           </View>
         </View>
 
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-            PHOTO (OPTIONAL)
+            PHOTO URL (OPTIONAL)
           </Text>
           <View
             style={[
@@ -153,17 +170,16 @@ export default function AddLogScreen() {
             ]}
           >
             <View style={styles.field}>
-              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
-                Photo URL
-              </Text>
+              <Feather name="link" size={14} color={colors.mutedForeground} />
               <TextInput
                 value={photoUrl}
                 onChangeText={setPhotoUrl}
                 placeholder="https://..."
                 placeholderTextColor={colors.mutedForeground}
-                style={[styles.fieldInput, { color: colors.foreground }]}
+                style={[styles.urlInput, { color: colors.foreground }]}
                 autoCapitalize="none"
                 keyboardType="url"
+                returnKeyType="done"
               />
             </View>
           </View>
@@ -171,13 +187,16 @@ export default function AddLogScreen() {
 
         <View
           style={[
-            styles.tipCard,
-            { backgroundColor: colors.earthyLight, borderColor: colors.earthy },
+            styles.hint,
+            {
+              backgroundColor: colors.earthyLight,
+              borderColor: colors.earthy + "30",
+            },
           ]}
         >
-          <Feather name="feather" size={15} color={colors.earthy} />
-          <Text style={[styles.tipText, { color: colors.earthy }]}>
-            Regular observations help you spot issues early and track growth milestones over time.
+          <Feather name="feather" size={14} color={colors.earthy} />
+          <Text style={[styles.hintText, { color: colors.earthy }]}>
+            Consistent observations help you catch problems early and celebrate milestones.
           </Text>
         </View>
       </KeyboardAwareScrollView>
@@ -192,93 +211,90 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 14,
     borderBottomWidth: 1,
   },
   headerCenter: { alignItems: "center" },
-  headerTitle: {
-    fontSize: 17,
-    fontFamily: "Inter_600SemiBold",
-  },
+  headerTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
   headerSub: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: "Inter_400Regular",
     fontStyle: "italic",
     marginTop: 1,
   },
   saveBtn: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
   },
-  saveBtnText: {
-    fontSize: 15,
-    fontFamily: "Inter_600SemiBold",
-  },
-  scrollView: { flex: 1 },
+  saveBtnText: { fontSize: 14, fontFamily: "Inter_600SemiBold" },
+  scroll: { flex: 1 },
   content: { padding: 20, gap: 20 },
-  dateRow: {
+  dateBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    padding: 12,
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
     borderRadius: 10,
     borderWidth: 1,
   },
-  dateText: {
-    fontSize: 13,
-    fontFamily: "Inter_500Medium",
-  },
+  dateText: { fontSize: 13, fontFamily: "Inter_500Medium" },
   section: { gap: 10 },
   sectionLabel: {
     fontSize: 11,
     fontFamily: "Inter_600SemiBold",
-    letterSpacing: 0.8,
+    letterSpacing: 0.7,
   },
-  notesContainer: {
-    borderRadius: 14,
+  notesWrap: {
+    borderRadius: 12,
     borderWidth: 1,
-    padding: 16,
-    minHeight: 160,
+    padding: 14,
+    minHeight: 150,
+    gap: 8,
   },
   notesInput: {
     fontSize: 15,
     fontFamily: "Inter_400Regular",
     lineHeight: 22,
-    minHeight: 130,
+    minHeight: 120,
     padding: 0,
   },
+  charCount: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    textAlign: "right",
+  },
   fieldGroup: {
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     overflow: "hidden",
   },
   field: {
-    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
     paddingVertical: 12,
-    gap: 4,
   },
-  fieldLabel: {
-    fontSize: 12,
-    fontFamily: "Inter_500Medium",
-  },
-  fieldInput: {
+  urlInput: {
+    flex: 1,
     fontSize: 15,
     fontFamily: "Inter_400Regular",
     padding: 0,
   },
-  tipCard: {
+  hint: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
-    padding: 14,
-    borderRadius: 12,
+    gap: 9,
+    padding: 13,
+    borderRadius: 10,
     borderWidth: 1,
   },
-  tipText: {
+  hintText: {
     flex: 1,
     fontSize: 13,
     fontFamily: "Inter_400Regular",
-    lineHeight: 19,
+    lineHeight: 18,
   },
 });

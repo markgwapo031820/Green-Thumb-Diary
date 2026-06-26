@@ -1,15 +1,14 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   Alert,
   Platform,
-  ScrollView,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -27,6 +26,49 @@ const FREQUENCY_OPTIONS = [
   { label: "Monthly", days: 30 },
 ];
 
+function FieldGroup({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const colors = useColors();
+  return (
+    <View
+      style={[
+        styles.fieldGroup,
+        { backgroundColor: colors.card, borderColor: colors.border },
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
+function Field({
+  label,
+  children,
+  last,
+}: {
+  label: string;
+  children: React.ReactNode;
+  last?: boolean;
+}) {
+  const colors = useColors();
+  return (
+    <>
+      <View style={styles.field}>
+        <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
+          {label}
+        </Text>
+        {children}
+      </View>
+      {!last && (
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+      )}
+    </>
+  );
+}
+
 export default function AddPlantScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -41,17 +83,20 @@ export default function AddPlantScreen() {
   const [selectedFreq, setSelectedFreq] = useState(7);
   const [saving, setSaving] = useState(false);
 
-  const topInset = Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
+  const topInset =
+    Platform.OS === "web" ? Math.max(insets.top, 67) : insets.top;
   const bottomInset = Platform.OS === "web" ? 34 : insets.bottom;
 
-  const handleSave = async () => {
-    if (!name.trim()) {
-      Alert.alert("Plant name required", "Please enter a name for your plant.");
+  const canSave = name.trim().length > 0;
+
+  const handleSave = useCallback(async () => {
+    if (!canSave) {
+      Alert.alert("Name required", "Please enter a name for your plant.");
       return;
     }
     setSaving(true);
     if (Platform.OS !== "web") {
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
     await addPlant({
       name: name.trim(),
@@ -62,7 +107,7 @@ export default function AddPlantScreen() {
     });
     setSaving(false);
     router.back();
-  };
+  }, [canSave, name, species, photoUrl, dateAcquired, selectedFreq, addPlant]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -76,36 +121,40 @@ export default function AddPlantScreen() {
           },
         ]}
       >
-        <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7}>
-          <Feather name="x" size={22} color={colors.foreground} />
-        </TouchableOpacity>
+        <Pressable
+          onPress={() => router.back()}
+          hitSlop={8}
+          style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}
+        >
+          <Feather name="x" size={21} color={colors.foreground} />
+        </Pressable>
         <Text style={[styles.headerTitle, { color: colors.foreground }]}>
           Add Plant
         </Text>
-        <TouchableOpacity
+        <Pressable
           onPress={handleSave}
-          disabled={saving}
-          style={[
+          disabled={saving || !canSave}
+          style={({ pressed }) => [
             styles.saveBtn,
             {
-              backgroundColor: name.trim() ? colors.primary : colors.muted,
+              backgroundColor: canSave ? colors.primary : colors.muted,
+              opacity: pressed ? 0.85 : 1,
             },
           ]}
-          activeOpacity={0.8}
         >
           <Text
             style={[
               styles.saveBtnText,
-              { color: name.trim() ? "#fff" : colors.mutedForeground },
+              { color: canSave ? "#fff" : colors.mutedForeground },
             ]}
           >
             {saving ? "Saving..." : "Save"}
           </Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
 
       <KeyboardAwareScrollView
-        style={styles.scrollView}
+        style={styles.scroll}
         contentContainerStyle={[
           styles.content,
           { paddingBottom: bottomInset + 40 },
@@ -116,105 +165,98 @@ export default function AddPlantScreen() {
       >
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-            PLANT INFO
+            PLANT DETAILS
           </Text>
-          <View
-            style={[
-              styles.fieldGroup,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <View style={styles.field}>
-              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
-                Name *
-              </Text>
+          <FieldGroup>
+            <Field label="Name *">
               <TextInput
                 value={name}
                 onChangeText={setName}
                 placeholder="e.g. Monstera"
                 placeholderTextColor={colors.mutedForeground}
-                style={[styles.fieldInput, { color: colors.foreground }]}
+                style={[styles.input, { color: colors.foreground }]}
+                returnKeyType="next"
+                autoFocus
               />
-            </View>
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <View style={styles.field}>
-              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
-                Species
-              </Text>
+            </Field>
+            <Field label="Scientific Name">
               <TextInput
                 value={species}
                 onChangeText={setSpecies}
                 placeholder="e.g. Monstera deliciosa"
                 placeholderTextColor={colors.mutedForeground}
-                style={[styles.fieldInput, { color: colors.foreground, fontStyle: "italic" }]}
+                style={[
+                  styles.input,
+                  { color: colors.foreground, fontStyle: "italic" },
+                ]}
+                returnKeyType="next"
               />
-            </View>
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <View style={styles.field}>
-              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
-                Photo URL
-              </Text>
+            </Field>
+            <Field label="Photo URL">
               <TextInput
                 value={photoUrl}
                 onChangeText={setPhotoUrl}
                 placeholder="https://..."
                 placeholderTextColor={colors.mutedForeground}
-                style={[styles.fieldInput, { color: colors.foreground }]}
+                style={[styles.input, { color: colors.foreground }]}
                 autoCapitalize="none"
                 keyboardType="url"
+                returnKeyType="next"
               />
-            </View>
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <View style={styles.field}>
-              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
-                Date Acquired
-              </Text>
+            </Field>
+            <Field label="Date Acquired" last>
               <TextInput
                 value={dateAcquired}
                 onChangeText={setDateAcquired}
                 placeholder="YYYY-MM-DD"
                 placeholderTextColor={colors.mutedForeground}
-                style={[styles.fieldInput, { color: colors.foreground }]}
+                style={[styles.input, { color: colors.foreground }]}
                 keyboardType="numbers-and-punctuation"
+                returnKeyType="done"
               />
-            </View>
-          </View>
+            </Field>
+          </FieldGroup>
         </View>
 
         <View style={styles.section}>
           <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
-            WATERING SCHEDULE
+            WATERING FREQUENCY
           </Text>
           <View style={styles.freqGrid}>
             {FREQUENCY_OPTIONS.map((opt) => {
               const active = selectedFreq === opt.days;
               return (
-                <TouchableOpacity
+                <Pressable
                   key={opt.days}
                   onPress={() => setSelectedFreq(opt.days)}
-                  style={[
-                    styles.freqChip,
+                  style={({ pressed }) => [
+                    styles.freqOption,
                     {
                       backgroundColor: active ? colors.primary : colors.card,
                       borderColor: active ? colors.primary : colors.border,
+                      opacity: pressed ? 0.85 : 1,
                     },
                   ]}
-                  activeOpacity={0.75}
                 >
-                  <Feather
-                    name="droplet"
-                    size={14}
-                    color={active ? "#fff" : colors.primary}
+                  <View
+                    style={[
+                      styles.freqDot,
+                      {
+                        backgroundColor: active
+                          ? "rgba(255,255,255,0.6)"
+                          : colors.primary,
+                      },
+                    ]}
                   />
                   <Text
                     style={[
-                      styles.freqChipText,
+                      styles.freqText,
                       { color: active ? "#fff" : colors.foreground },
                     ]}
                   >
                     {opt.label}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
               );
             })}
           </View>
@@ -222,13 +264,16 @@ export default function AddPlantScreen() {
 
         <View
           style={[
-            styles.tipCard,
-            { backgroundColor: colors.successLight, borderColor: colors.primary },
+            styles.hint,
+            {
+              backgroundColor: colors.successLight,
+              borderColor: colors.primary + "30",
+            },
           ]}
         >
-          <Feather name="info" size={16} color={colors.primary} />
-          <Text style={[styles.tipText, { color: colors.primary }]}>
-            You can update all details and log your plant's growth after adding it.
+          <Feather name="info" size={14} color={colors.primary} />
+          <Text style={[styles.hintText, { color: colors.primary }]}>
+            You can add growth log entries and update details after saving.
           </Text>
         </View>
       </KeyboardAwareScrollView>
@@ -243,80 +288,83 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingBottom: 14,
     borderBottomWidth: 1,
   },
   headerTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontFamily: "Inter_600SemiBold",
   },
   saveBtn: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingVertical: 7,
+    borderRadius: 8,
   },
   saveBtnText: {
-    fontSize: 15,
+    fontSize: 14,
     fontFamily: "Inter_600SemiBold",
   },
-  scrollView: { flex: 1 },
-  content: { padding: 20, gap: 24 },
+  scroll: { flex: 1 },
+  content: { padding: 20, gap: 22 },
   section: { gap: 10 },
   sectionLabel: {
     fontSize: 11,
     fontFamily: "Inter_600SemiBold",
-    letterSpacing: 0.8,
+    letterSpacing: 0.7,
   },
   fieldGroup: {
-    borderRadius: 16,
+    borderRadius: 12,
     borderWidth: 1,
     overflow: "hidden",
   },
   field: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    gap: 3,
   },
   fieldLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: "Inter_500Medium",
+    letterSpacing: 0.1,
   },
-  fieldInput: {
-    fontSize: 16,
+  input: {
+    fontSize: 15,
     fontFamily: "Inter_400Regular",
     padding: 0,
+    marginTop: 1,
   },
-  divider: { height: 1, marginHorizontal: 16 },
+  divider: { height: 1, marginHorizontal: 14 },
   freqGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 10,
+    gap: 8,
   },
-  freqChip: {
+  freqOption: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 7,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
+    paddingVertical: 9,
+    borderRadius: 10,
     borderWidth: 1,
   },
-  freqChipText: {
-    fontSize: 14,
+  freqDot: { width: 6, height: 6, borderRadius: 3 },
+  freqText: {
+    fontSize: 13,
     fontFamily: "Inter_500Medium",
   },
-  tipCard: {
+  hint: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
-    padding: 14,
-    borderRadius: 12,
+    gap: 9,
+    padding: 13,
+    borderRadius: 10,
     borderWidth: 1,
   },
-  tipText: {
+  hintText: {
     flex: 1,
     fontSize: 13,
     fontFamily: "Inter_400Regular",
-    lineHeight: 19,
+    lineHeight: 18,
   },
 });
