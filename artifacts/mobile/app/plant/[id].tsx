@@ -255,12 +255,20 @@ export default function PlantDetailScreen() {
             >
               <Feather name="arrow-left" size={18} color="#fff" />
             </Pressable>
-            <Pressable
-              onPress={handleDelete}
-              style={[styles.navBtn, { backgroundColor: "rgba(0,0,0,0.38)" }]}
-            >
-              <Feather name="trash-2" size={16} color="#fff" />
-            </Pressable>
+            <View style={styles.heroNavRight}>
+              <Pressable
+                onPress={() => router.push(`/plant/${id}/edit`)}
+                style={[styles.navBtn, { backgroundColor: "rgba(0,0,0,0.38)" }]}
+              >
+                <Feather name="edit-2" size={16} color="#fff" />
+              </Pressable>
+              <Pressable
+                onPress={handleDelete}
+                style={[styles.navBtn, { backgroundColor: "rgba(0,0,0,0.38)" }]}
+              >
+                <Feather name="trash-2" size={16} color="#fff" />
+              </Pressable>
+            </View>
           </View>
         </View>
 
@@ -469,8 +477,13 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "flex-start",
     paddingHorizontal: 16,
     paddingBottom: 16,
+  },
+  heroNavRight: {
+    flexDirection: "row",
+    gap: 8,
   },
   navBtn: {
     width: 38,
