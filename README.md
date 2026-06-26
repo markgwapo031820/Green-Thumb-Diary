@@ -2,6 +2,7 @@
 
 A full-stack plant care tracker with watering reminders, growth logs, and PWA support — installable on Android without the Play Store.
 
+live demo: https://7abe08c8-b560-4757-bf24-79e11523ec50-00-1e5d2rwqd7moy.sisko.replit.dev/plant-web/
 ---
 
 ## Features
