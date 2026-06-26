@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { KeyboardAwareScrollViewCompat } from "react-native-keyboard-controller";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { usePlants } from "@/context/PlantContext";
@@ -104,7 +104,7 @@ export default function AddPlantScreen() {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAwareScrollViewCompat
+      <KeyboardAwareScrollView
         style={styles.scrollView}
         contentContainerStyle={[
           styles.content,
@@ -231,7 +231,7 @@ export default function AddPlantScreen() {
             You can update all details and log your plant's growth after adding it.
           </Text>
         </View>
-      </KeyboardAwareScrollViewCompat>
+      </KeyboardAwareScrollView>
     </View>
   );
 }

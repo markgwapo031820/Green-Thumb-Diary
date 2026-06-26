@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { KeyboardAwareScrollViewCompat } from "react-native-keyboard-controller";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { usePlants } from "@/context/PlantContext";
@@ -92,7 +92,7 @@ export default function AddLogScreen() {
         </TouchableOpacity>
       </View>
 
-      <KeyboardAwareScrollViewCompat
+      <KeyboardAwareScrollView
         style={styles.scrollView}
         contentContainerStyle={[
           styles.content,
@@ -180,7 +180,7 @@ export default function AddLogScreen() {
             Regular observations help you spot issues early and track growth milestones over time.
           </Text>
         </View>
-      </KeyboardAwareScrollViewCompat>
+      </KeyboardAwareScrollView>
     </View>
   );
 }
